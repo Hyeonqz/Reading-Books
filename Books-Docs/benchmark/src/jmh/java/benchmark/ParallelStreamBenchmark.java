@@ -1,6 +1,7 @@
 package benchmark;
 
 import java.util.concurrent.TimeUnit;
+import java.util.stream.LongStream;
 import java.util.stream.Stream;
 
 import org.openjdk.jmh.annotations.Benchmark;
@@ -20,21 +21,75 @@ import org.openjdk.jmh.annotations.TearDown;
 public class ParallelStreamBenchmark {
 	private static final long N = 10_000_000L;
 
-	@Benchmark
+/*	@Benchmark
 	public long sequentialSum() {
 		return Stream.iterate(1L, i-> i+1)
 			.limit(N)
 			.reduce(0L, Long::sum);
-	}
+	}*/
 
 	@Benchmark
+	public long sequentialParallelSum() {
+		return Stream.iterate(1L, i-> i+1)
+			.limit(N)
+			.parallel()
+			.reduce(0L, Long::sum);
+	}
+
+/*	@Benchmark
 	public long iterativeSum() {
 		long result = 0;
 		for (long i = 1L; i <N ; i++) {
 			result += i;
 		}
 		return result;
+	}*/
+
+	@Benchmark
+	public long parallelRangedSum() {
+		return LongStream.rangeClosed(1,N)
+			.parallel()
+			.reduce(0L, Long::sum);
 	}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 	@TearDown(Level.Invocation) // 벤치마크 실행 후 가비지 컬렉터 동작
 	public void reset() {
