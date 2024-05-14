@@ -166,94 +166,146 @@ Optional 이 비어있으면 아무일도 일어나지 않는다. <br>
 ![img_1.png](img_1.png)
 
 #### flatMap 으로 Optional 객체 연결
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+```java
+Optional<Person> optPerson = Optonal.of(person);
+Optional<String> name = optPerson.map(Person::getCar)
+        .map(Car::getInsurance)
+        .map(Insurance::getName);
+```
+![img_2.png](img_2.png)
+위 코드는 컴파일 되지않는다. 위 코드를 컴파일 시키려면 flatMap 을 사용해야 한다 <br>
+
+1) Optional 로 자동차의 보험회사 이름 찾기
+```java
+public String getCarInsuranceName(Optional<Person> person) {
+	return person.flatMap(Person::getCar)
+            .flatMap(Car::getInsurance)
+            .map(Insurance::getName)
+            .orElse("Unknown"); // Optional 이 빈값이면 반환
+}
+```
+
+#### Optional 스트림 조작
+자바 9에서는 Optional 을 포함하는 스트림을 쉽게 처리할수 있도록 Optional 에 stream() 메소드를 추가했다 <br>
+
+Person/car/Insurance 에는 도메인 모델을 사용하고 있다.
+```java
+private Car car;
+public Optional<Car> getCarAsOptional() {
+	return Optional.ofNullable(car);
+}
+
+public Set<String> getCarInsuranceNames(List<Person> personList) {
+	return personList.stream()
+            .map(Person::getCar)
+            .map(optCar -> optCar.flatMap(Car::getInsurance))
+            .map(optIns -> optIns.map(Insurance::getName))
+            .flatMap(Optional::stream)
+            .collect(toSet());
+}
+```
+
+#### 디폴트 액션과 Optional 언랩
+- get() 은 값을 읽는 가장 단순한 메소드이면서 가장 안전하지 않은 메소드이다.
+  - 만약 값이 없으면 NoSuchElementException 이 발생하고, Optional 값이 무조건 있는 상황 아니면 사용하는것은 바람직하지 않다.
+- orElse() 는 Optional 이 값을 포함하지 않을 때 기본값을 제공할 수 있다. 
+- orElseGet() 는 orElse() 와 대응되는 게으른 버전의ㅏ 메소드 이다. Optional 에 값이 없을 때만 Supplier 가 실행이 된다.
+- orElseThrow() 는 Optional 이 비어있을 때 예외를 발생시킨다는 점에서 get 메소드와 비슷하다. 하지만 이 메소드는 발생시킬 예외를 선택할 수 있다.
+- ifPresent() 를 이용하면 값이 존재할 때 인수로 넘겨준 동작을 실행할 수 있다. 값이 없으면 아무 일도 일어나지 않는다. 
+- ifPresentOrElse() 는 Optional 이 비었을 때 실행할 수 있는 Runnable 을 인수로 받는다는 점만 ifPresent() 와 다르다.
+
+#### 두 Optional 합치기
+```java
+// 가장 저렴한 보험료를 제공하는 보험회사를 찾는 로직
+public Insurance findCheapestInsurance(Person person, Car car) {
+	// 다양한 보험회사가 제공하는 서비스 조회
+    // 모든 결과 데이터 비교
+   return chepeastCompany;
+}
+```
+
+두개의 파라미터 중에서, 하나라도 null 값이 있어서는 안된다. 
+```java
+public Optional<Insurance> nullSafeFindCheapestInsurance(Optional<Person> person, Optional<Car> car) {
+	if(person.isPresent() && car.isPresent() ) {
+		return Optional.of(findcheapestInsurance(person.get(), car.get()));
+    } else {
+		return Optional.empty();
+    }
+}
+// 개선
+public Optional<Insurance> nullSafeFindCheapestInsurance(Optional<Person> person, Optional<Car> car) {
+    return person.flatMap(p -> car.map(c -> findCheapestInsurance(p,c)));
+}
+```
+
+### Optional 을 사용한 실용 예제
+#### 잠재적으로 Null 이 될 수 있는 대상을 Optional 로 감싸기
+```java
+Obejct value = map.get("key");
+
+Optioanl<Object> value = Optional.ofNullable(map.get("key"));
+```
+
+#### 예외와 Optional 클래스
+```java
+public static Optional<Integer> stringToInt(String s) {
+	try {
+		return Optional.of(Integer.parseInt(s));
+    } catch (NumberFormatException e) {
+		return Optional.empty();
+    }
+}
+```
+
+OptionalUtility 를 만들어서 사용해보길 권장한다.
+
+#### 기본형 특화 Optional 을 사용하면 안돼는 이유
+스트림 처럼, Optional 또한, OptionalInt, OptionalLong, OptionalDouble 클래스가 있다 <br>
+하지만 스트림처럼 특화 스트림을 써서 성능을 개선할 수 없다. 왜냐? Optional 은 최대 요소 수는 한개 이기 때문이다 <br>
+기본형 특화 Optional 은 map,flatMap,filter 등을 지원하지 않으므로 기본형 특화 옵셔널을 권장하지 않는다.
+
+#### 응용
+Optional 클래스 를 활용해보자
+```java
+		Properties props = new Properties();
+		props.setProperty("a","5");
+		props.setProperty("b","true");
+		props.setProperty("c","-3");
+```
+
+위 프로그램에서는 Properties 를 읽어서 값을 초 단위의 지속 시간으로 해석한다 
+```java
+public int readDuration(Properties props, String name) { 
+	String value = props.getProperty(name);
+	if(value != null) {
+		try {
+			int i = Integer.parseInt(value);
+			if(i>0) {
+				return i;
+            }
+        } catch(NumverFormatException nfe) {
+			
+      }
+		return 0;
+    }
+}
+```
+
+try/catch 블록이 중첩되면서 구현 코드가 복잡해졌고, 가독성이 나빠졌다.
+```java
+public int readDuration(Properties props, String name) {
+	return Optional.ofNullable(props.getProperty(name))
+            .flatMap(OptionalUtility::stringToInt)
+            .filter(i -> i > 0)
+            .orElse(0);
+}
+```
+
+### 최종 정리
+- 역사적으로 프로그래밍 언어에서는 null 참조로 값이 없는 상황을 표현했다.
+- 자바8 에서는 Optional 클래스를 제공한다
+- 팩토리 메소드, empty, of, Nullable 등을 이용해 Optional 객체를 만들 수 있다.
+- Optional 클래스는 스트림과 비슷한 연산을 수행하는 map,flatMap, filter 등 메소드를 제공한다.
+- Optional 로 값이 없는 상황을 적절하게 처리하도록 강제할 수 있다. Optional 로 예상치 못한 null 예외를 방지할 수 있다.
+- Optional 을 활용하면 더 좋은 API 를 설계할 수 있다
