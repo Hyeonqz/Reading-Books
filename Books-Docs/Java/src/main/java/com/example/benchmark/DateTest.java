@@ -27,10 +27,18 @@ public class DateTest {
 		Instant now = Instant.now();
 		System.out.println("now = " + now);
 
-		LocalDate date1 = LocalDate.of(2024,5,16);
+		//LocalDate date1 = LocalDate.of(2024,5,16);
 		LocalDate date2 = date1.withYear(2025);
 		LocalDate date3 = date1.withDayOfMonth(6);
 		LocalDate date4 = date3.with(ChronoField.MONTH_OF_YEAR,2);
+
+		abc a = new abc() {
+			@Override
+			public Integer add (int a, int b) {
+				return a+b;
+			}
+		};
+		System.out.println(a.add(5,5));
 
 	}
 }
