@@ -12,3 +12,293 @@ CompletableFuture 와 리액티브 프로그래밍 패러다임 두 가지 API �
 CompletableFuture 가 비동기 프로그래밍에 얼마나 큰 도움을 주는지 알아보자 <br>
 
 ### Future 의 단순 활용
+자바5 부터는 미래의 어느시점에 결과를 얻는 모델에 활용할 수 있도록 Future 인터페이스를 제공하고 있다 <br>
+비동기 계산을 모델링하는데 Future 를 이용할 수 있으며, Future 는 계산이 끝났을 때 결과에 접근할 수 있는 참조를 제공한다 <br>
+시간이 걸릴 수 있는 작업을 Future 내부로 설정하면 호출자 스레드가 결과를 기다리는 동안 다른 유용한 작업을 수행할 수 있다 <br>
+Future 는 저수준의 스레드에 비해 직관적으로 이해하기 쉽다는 장점이 있다 <br>
+Future 를 이용하려면 시간이 오래 걸리는 작업을 Callable 객체 내부로 감싼 다음에 ExecutorService 에 제출해야 한다 
+
+#### Future 제한 
+Future 인터페이스가 비동기 계산이 끝났는지 확인할 수 있는 isDone 메소드, 계산이 끝나길 기다리는 메소드, 결과 회수 메소드 등을 제공한다 <br>
+Future 인터페이스를 구현한 CompletableFuture 클래스를 봐보자, Stream 과 비슷한 패턴, 즉 람다 표현식과 파이프라이닝을 활용 한다. <br>
+따라서 Future 와 CompletableFuture 의 관계를 Collection 과 Stream 의 관계에 비유할 수 있다.
+
+#### CompletableFuture 로 비동기 어플리케이션 만들기
+어떤 제품이나 서비스를 이용해야 하는 상황이라고 가정하자. 예산을 줄일 수 있도록 온라인상점 중 가장 저렴한 가격을 제시하는 상점을 찾는 애플리케이션을<br>
+완성해가는 에제를 이용해서 CompletableFuture 기능을 살펴보자 <br>
+1) 고객에게 비동기 API 를 제공하는 방법을 배운다.
+2) 동기 API 를 사용해야 할 때 코드를 비블록으로 만드는 방법을 배운다.
+3) 비동기 동작의 완료에 대응하는 방법을 배운다.
+
+동기 API 와 비동기 API <br>
+전통적인 동기 API 에서는 메소드를 호출한 다음에 메소드가 계산을 완료할 때까지 기다렸다가 메소드가 반환되면 <br>
+호출자는 반환된 값으로 계속 다른 동작을 수행한다 <br>
+호출자와 피호출자가 각각 다른 스레드에서 실행되는 상황이었더라도 호출자는 피호출자의 동작 완료를 기다렸을 것이다. <br>
+이처럼 동기 API 를 사용하는 상황을 블록 호출 이라고 한다.<br>
+반면 비동기 API 에서는 메소드가 즉시 반환되며 끝내지 못한 나머지 작업을 호출자 스레드와 동기적으로 실행될 수 있도록 다른 스레드에 할당한다 <br>
+이와 같은 비동기 API 를 사용하는 상황을 비블록 호출 이라고 한다 <br>
+다른 스레드에 할당된 나머지 계산 결과는 콜백 메소드를 호출해서 전달하거나 호출자가 계산 결과가 끝날 때 까지 기다림 메소드를 추가로 호출하면서 전달된다 <br>
+주로 I/O 시스템 프로그래밍에서 이와 같은 방식으로 동작을 수행한다. <br>
+즉 계산 동작을 수행하는 동안 비동기적으로 디스크 접근을 수행한다 <br>
+그리고 더 이상 수행할 동작이 없으면 디스크 블록이 메모리로 로딩될 때 까지 기다린다.
+
+### 비동기 API 구현
+최저가격 검색 어플리케이션을 구현하기 위해 먼저 각각의 상점에서 제공해야 하는 API 부터 정의해보자
+```java
+public class Shop {
+	public double getPrice(String product) {
+		// 구현
+    }
+	
+	// 지연시키는 메소드를 만듬
+	public static void delay() {
+		try {
+			Thread.sleep(1000L);
+		} catch (InterruptedException e) {
+			throw new RuntimeException(e);
+		}
+    }
+}
+```
+
+위에서 구현한 delay 를 이용해서 지연을 흉내 낸 다음에 임의의 계산값을 반환하도록 getPrice 를 구현할 수 있다 <br>
+```java
+public double getPrice(String product) {
+	return calculatePrice(product);
+}
+
+private double calculatePrice(String product) {
+	delay();
+	return random.nextDouble() * product.charAt(0) + product.charAt(1);
+}
+```
+
+사용자가 이 API(최저가격 검색 어플리케이션) 을 호출하면 비동기 동작이 완료될 때 까지 1초동안 블록된다 <br>
+최저가격 검색 어플리케이션위에서 위 메소드를 사용해서 네트워크 상의 모든 온라인상점의 가격을 검색해야 하므로 블록 동작은 바람직하지 않다 <br>
+뒤에서는 동기 API 를 비동기적으로 소비하는 방법도 알아볼 것이다. <br>
+
+#### 동기 메소드를 비동기 메소드로 변환
+```java
+public Future<Double> getPriceAsync(String product) { //로직}
+```
+
+Future 인터페이스를 사용하면 호출자 스레드가 블록되지 않고 다른 작업을 실행할 수 있다 <br>
+Future 는 결과값의 핸들일 뿐이며 계산이 완료되면 get 메소드 로 결과를 얻을 수 있다 <br>
+getPriceAsync 메소드는 즉시 반환되므로 호출자 스레드는 다른 작업을 수행할 수 있다 <br>
+자바 8의 새로운 CompletableFuture 클래스는 getPriceAsync 를 쉽게 구현하는데 도움이 되는 기능을 제공한다
+```java
+public Future<Double> getPriceAsync(String product) {
+	CompletableFuture<Double> futurePrice = new CompletableFuture<>(); // 계산 결과를 포함할 객체 생성
+	new Thread( () -> {
+		double price = calculatePrice(product); // 다른 스레드에서 비동기적으로 계산 수행
+		futurePrice.complete(price); // 오랜 시간이 걸리는 계산이 완료되면 Future 에 값 생성
+    }).start();
+	return futurePrice; // 계산 결과가 완료되길 기다리지 않고 Future 를 반환한다.
+}
+```
+
+위 코드에서 비동기 계산과 완료 결과를 포함하는 CompletableFuture 인스턴스를 만들었다 <br>
+실제 가격을 계산할 다른 스레드를 만든 다음에 오래 걸리는 계산 결과를 기다리지 않고 결과를 포함할 Future 인스턴스를 바로 반환했다 <br>
+요청한 제품의 가격 정보가 도착하면 complete 메소드를 이용해서 CompletableFuture 를 종료할 수 있다
+```java
+public static void main (String[] args) {
+	Shop shop = new Shop("BestShop");
+	long start = System.nanoTime();
+	Future<Double> futurePrice = shop.getPriceAsync("my favorite product");
+	long invocationTime = ((System.nanoTime() - start) / 1_000_000);
+	System.out.println("Invocation returned after " + invocationTime + "msecs");
+
+	// 제품 가격을 계산하는 동안
+	doSomethingElse();
+
+	try {
+		double price = futurePrice.get();
+	} catch (Exception e) {
+		throw new RuntimeException(e);
+	}
+	long retrievalTime = ((System.nanoTime() - start) / 1_000_000);
+	System.out.println("Invocation returned after " + invocationTime + "msecs");
+}
+```
+
+Shop 은 비동기 API 를 제공하므로 즉시 Future 를 반환한다. 클라이언트는 반환된 Future 를 이용해서 나중에 결과를 얻는다 <br>
+그 사이 클라이언트는 다른 상점에 가격 정보를 요청하는 등 첫 번째 상점의 결과를 기다리면서 대기하지 않고 다른 작업을 처리할 수 있다 <br>
+나중에 클라이언트가 특별히 할일이 없으면 Future 의 get 메소드를 호출한다 <br>
+이 때 Future 가 결과값을 가지고 있다면 Future 에 포함된 값을 읽거나 아니면 값이 계산될 때까지 블록한다 <br>
+
+#### 에러 처리 방법
+예외가 발생하면 해당 스레드에만 영향을 미친다, 즉 에러가 발생해도 가격 계산은 계속 진행되며 일의 순서가 꼬인다. <br>
+결과적으로 클라이언트는 get 메소드가 반환될 때까지 영원히 기다리게 될 수도 있다 <br>
+
+클라이언트는 타임아웃값을 받는 get 메소드의 오버로드 버전을 만들어 이 문제를 해결할 수 있다 <br>
+이처럼 블록 문제가 발생할 수 있는 상황에서는 타임아웃을 활용하는 것이 좋다.<br>
+그래야 문제가 발생했을 때 클라이언트가 영원히 블록되지 않고 타임아웃 시간이 지나면 TimeoutException 을 받을 수 있다.<br>
+따라서 completeExceptionally 메소드를 이용해서 CompletableFuture 내부에서 발생한 예외를 클라이언트로 전달해야 한다 <br>
+```java
+	public Future<Double> getPriceAsync(String product) {
+	CompletableFuture<Double> futurePrice = new CompletableFuture<>();
+	new Thread( () -> {
+		try {
+			double price = calculatePrice(product);
+			futurePrice.complete(price);
+		} catch (Exception ex) {
+			futurePrice.completeExceptionally(ex);
+		}
+	}).start();
+	return futurePrice;
+}
+```
+
+이제 클라이언트는 가격 계산 메소드에서 발생한 예외 파라미터를 포함하는 예외를 받게된다 <br>
+
+#### 팩토리 메소드 supplyAsync 로 CompletableFuture 만들기
+좀 더 간결하게 CompletableFuture 를 만들어 보겠다.
+```java
+public Future<Double> getPriceAsync(String product) {
+	return CompletableFuture.supplyAsync( () -> calculatePrice(product));
+}
+```
+
+supplyAsync 메소드는 Supplier 를 인수로 받아서 CompletableFuture 를 반환한다 <br>
+CompletableFuture 는 Supplier 를 실행해서 비동기적으로 결과를 생성한다 <br>
+
+#### 비블록 코드 만들기
+```java
+List<Shop> shops = Arrays.asList(
+	        new Shop("BestPrice"),
+            new Shop("LetsSaveBig"),
+            new Shop("MyFavoriteShop"));
+```
+
+그리고 다음처럼 제품명을 입력하면 상점 이름과 제품 가격 문자열 정보를 포함하는 List 를 반환하는 메소드를 구현한다.
+```java
+public List<String> findPrices(String product);
+        // output                 input
+// input 이 들어와서 Output 으로 나간다.
+```
+
+```java
+public List<String> findPrices(String product) {
+	return shops.stream()
+        .map(shop -> String.format("%s price is %.2f", shop.getName(), shop.getPrice(product)))
+        .collect(toList());
+}
+```
+
+간단한 코드이다. 이제 findPrices 메소드로 원하는 제품의 가격을 검색할 수 있다. 
+```java
+long start = System.nanoTime();
+System.out.println(findPrices("myPhone27S"));
+long duration = (System.nanoTime() - start) / 1_000_000;
+System.out.println("Done in" + duration + " msecs");
+```
+
+위 코드를 통해 결과를 받을 수 있다, 이제 어떻게 성능을 개선할 수 있을까?
+
+#### 병렬 스트림으로 요청 병렬화 하기
+병렬 스트림을 이용해서 순차 계산을 병렬로 처리해서 성능을 개선할 수 있다.
+```java
+public List<String> findPrices(String product) {
+	return shops.parallelStream()
+		.map(shop -> String.format("%s price is %.2f", shop.getName(), shop.getPrice(product)))
+		.collect(toList());
+}
+```
+
+이렇게 하면 간단하게 성능을 개선했다, 3개의 상점에서 병렬로 검색이 진행되므로 1초 안에 검색이 완료된다 <br>
+이를 더 개선하기 위해서 CompletableFuture 기능을 활용해서 findPrices 메소드의 동기 호출을 비동기로 바꿔보자
+
+#### CompletableFuture 로 비동기 호출 구현하기
+![img_7.png](img_7.png)
+```java
+public List<String> findPrices(String product) {
+	List<CompletableFuture<String>> priceFutures = 
+        shops.stream()
+            .map(shop -> CompletableFuture.supplyAsync(
+				() -> shop.getName() + " price is " + shop.getPrice(product)
+            )).collect(Collectors.toList());
+	
+	return priceFutures.stream()
+        .map(CompletableFuture::join) // 모든 비동기 동작이 끝나길 기다린다.
+        .toList();
+}
+```
+
+두 map 연산을 하나의 스트림 처리 파이프라인으로 처리하지 않고 두 개의 스트림 파이프라인으로 처리했다.<br>
+스트림 연산은 게으른 특성이 있으므로 하나의 파이프라인으로 연산을 처리했다면 모든 가격 정보 요청 동작이 동기적,순차적으로 이루어진다 <br>
+CompletableFuture 버전이 병렬 스트림 버전보다 아주 조금 빠르다 <br>
+두 가지 버전 모두 내부적으로 Runtime.getRuntime().availableProcessors() 가 반환하는 스레드 수를 사용하면서 비슷한 결과가 된다 <br>
+Executor 로 스레드 풀의 크기를 조절하는 등 애플리케이션에 맞는 최적화된 설정을 만들 수 있다
+
+### 커스텀 Executor 사용하기
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
