@@ -231,74 +231,138 @@ CompletableFuture 버전이 병렬 스트림 버전보다 아주 조금 빠르�
 Executor 로 스레드 풀의 크기를 조절하는 등 애플리케이션에 맞는 최적화된 설정을 만들 수 있다
 
 ### 커스텀 Executor 사용하기
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+우리 어플리케이션이 실제로 필요한 작업량을 고려한 풀에서 관리하는 스레드 수에 맞게 Executor 를 만들 수 있으면 좋을 것이다 <br>
+스레드 풀이 너무 크면 CPU 와 메모리 자원을 서로 경쟁하느라 시간을 낭비할 수 있다 <br>
+반면 스레드 풀이 너무 작으면 CPU 의 일부 코어는 활용되지 않을 수 있다 <br>
+```java
+private final Executor executor = Executors.newFixedThreadPool(Math.min(shops.size(), 100)
+    ,new ThreadFactory() {
+	    public Thread newThread(Runnable r) {
+			Thread t = new Thread(r);
+			t.setDaemon(true); // 프로그램 종료를 방해하지 않는 데몬 스레드를 사용한다.
+			return t;
+        }
+    });
+```
+
+우리가 만드는 풀은 데몬 스레드를 포함한다 <br>
+자바에서 일반 스레드가 실행중이면 자바 프로그램은 종료되지 않는다. <br>
+따라서 어떤 이벤트를 한없이 기다리면서 종료되지 않는 일반 스레드가 있으면 문제가 될 수 있다 <br>
+반면 데몬 스레드는 자바 프로그램이 종료될 때 강제로 실행이 종료될 수 있다. 두 스레드의 성능은 같다 <br>
+```java
+CompletableFuture.supplyAsync( () -> shop.getName() + " price is " + shop.getPrice(product), executor);
+```
+
+결국 어플리케이션 특성에 맞는 Executor 를 만들어 CompletableFuture 를 활용하는 것이 바람직하다는 사실을 확인할 수 있다 <br>
+
+<b> 스트림 병렬화와 CompletableFuture 병렬화 </b> <br>
+1) 병렬 스트림으로 변환해서 컬렉션 처리 <br>
+2) 컬렉션을 반복하면서 CompletableFuture 내부의 연산으로 만드는 것.<br>
+
+CompletableFuture 를 이용하면 전체적인 계산이 블록되지 않도록 스레드 풀의 크기를 조절할 수 있다 <br>
+- I/O 가 포함되지 않은 계산 중심의 동작을 실행할 때는 스트림 인터페이스가 가장 구현하기 간단하며 효율적일 수 있다.
+- 작업이 I/O 를 기다리는 작업을 병렬로 실행할 때는 CompletableFuture 가 더많은 유연성을 제공한다. 
+  - 특히 스트림의 게으른 특성 때문에 스트림에서 I/O 를 실제로 언제 처리할지 예측하기 어려운 문제도 있다
+
+#### 비동기 작업 파이프라인 만들기
+우리와 계약을 맺은 모든 상점이 하나의 할인 서비스를 사용하기로 했다고 가정하자, 예시를 보자
+```java
+public class Discount {
+	public enum Code {
+		NONE(0) , SILVER(5), GOLD(10), PLATINUM(15), DIAMOND(20);
+		private final int percentage;
+		
+		Code(int percentage) {
+			this.percentage = percentage;
+		}
+	}
+	// 나머지 구현
+}
+```
+```java
+public class Quote {
+	private final String shopName;
+	private final double price;
+	private final Discount.Code discountCode;
+
+	public Quote (String shopName, double price, Discount.Code discountCode) {
+		this.shopName = shopName;
+		this.price = price;
+		this.discountCode = discountCode;
+	}
+
+	public static Quote parse(String s) {
+		String[] split = s.split(":");
+		String shopName = split[0];
+		double price = Double.parseDouble(split[1]);
+		Discount.Code discountCode = Discount.Code.valueOf(split[2]);
+		return new Quote(shopName, price, discountCode);
+	}
+
+	public String getShopName () {
+		return shopName;
+	}
+
+	public double getPrice () {
+		return price;
+	}
+
+	public Discount.Code getDiscountCode () {
+		return discountCode;
+	}
+
+}
+```
+
+상점에서 얻은 문자열을 정적 팩토리 메소드 parse 로 넘겨주면 이름,가격,정보 를 포함하는 Quote 인스턴스가 생성된다 <br>
+
+```java
+	public static String applyDiscount(Quote quote) {
+		return quote.getShopName() + " price is " + 
+			Discount.apply(quote.getPrice(), quote.getDiscountCode()); // 기존에 가격에 할인코드를 적용
+	}
+	
+	private static double apply(double price, Code discountCode) {
+		dealy(); // 응답을 1초 지연 시킴
+		return String.format(price * (100- discountCode.percentage)/100);
+	}
+```
+
+동기방식으로 Discount 서비스 얻기
+```java
+public List<String> findPrices(String product) {
+	return shops.stream()
+        .map(shop -> shop.getPrice(product)) // 요청한 제품의 가격과 할인코드로 변환
+        .map(Quote::parse) // 문자열 파싱해서 Quote 객체를 만든다
+        .map(Discount::applyDiscount) // Discount 서비스에 접근해서 최종 할인가격을 계산하고 문자열 반환
+        .toList();
+}
+```
+
+위 구현은 성능 최적화 와는 거리가 멀다 <br>
+순차적으로 여러 상점에 가격 정보를 요청하느라 시간이 소요되었다. <br>
+위 구현을 성능을 최적화 하기위해선 병렬 스트림을 이용하면 되지만, 스레드 풀의 크기가 고정되어 있어서 상점 수가 늘어났을때 유연하게 대응할 수 없다 <br>
+따라서 CompletableFuture 에서 수행할 수 있는 태스크를 설정할 수 있는 커스텀 Executor 를 정의함으로 써 우리의 CPU 사용을 극대화 할 수 있다 <br>
+
+#### 동기작업과 비동기 작업 조합하기
+```java
+	public List<String> findPrices(String product) {
+		List<CompletableFuture<String>> priceFutures = 
+			shops.stream()
+				.map(s -> CompletableFuture.supplyAsync( () -> s.getPrice(product), executor))
+				.map(future -> future.thenApply(Quote::parse))
+				.map(future -> future.thenCompose(quote -> 
+					CompletableFuture.supplyAsync( () -> Discount.applyDiscount(quote),executor)))
+				.toList();
+		
+		return priceFutures.stream()
+			.map(CompletableFuture::join)
+			.toList();
+	}
+```
+
+위 코드는 많이 복잡해졌다. 위 코드에서는 map 을 통해 세 가지 변환을 한다 <br>
+![img_8.png](img_8.png)
+
+#### Future 의 리플렉션과 CompletableFuture 의 리플렉션
+CompletableFuture 는 람다 표현식을 사용한다, 람다 덕분에 복잡한 연산 수행방법을 효과적으로 정의하는 선언형 API 를 만들 수 있다 
