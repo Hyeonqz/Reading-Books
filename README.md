@@ -26,7 +26,7 @@
 <br>
 
 ### <a href=''>네티 인 액션</a>
-  - <a href=''>정 리</a>
+  - <a href='https://github.com/Hyeonqz/Reading-Books/tree/main/Books-Docs/%EB%84%A4%ED%8B%B0%EC%9D%B8%EC%95%A1%EC%85%98'>정 리</a>
 
 <br>
 
