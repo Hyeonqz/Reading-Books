@@ -1,3 +1,4 @@
+/*
 package ch1;
 
 import java.io.BufferedReader;
@@ -21,7 +22,9 @@ public class Ex1 {
 		ServerSocket serverSocket = new ServerSocket(portNumber); // 포트 연결 수신
 		Socket clientSocket = serverSocket.accept(); // accept 호출은 연결될 때 까지 진행을 블로킹
 
-		/* 위 소켓으로부터 스트림 객체를 파생한다 */
+		*/
+/* 위 소켓으로부터 스트림 객체를 파생한다 *//*
+
 		BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
 		PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true);
 
@@ -35,7 +38,7 @@ public class Ex1 {
 		response = processReqeust(request); // 요청이 서버의 처리 메소드로 전달
 		out.println(response); // 서버의 응답이 클라이언트로 전달
 
-		Channel channel = ...;
+		Channel channel = "";
 		ChannelFuture future = channel.connect(new InetSocketAddress("192.168.0.1",25));
 		future.addListener(new ChannelFutureListener() {
 
@@ -62,3 +65,4 @@ class ConnectHandler extends ChannelInboundHandlerAdapter {
 	}
 
 }
+*/
