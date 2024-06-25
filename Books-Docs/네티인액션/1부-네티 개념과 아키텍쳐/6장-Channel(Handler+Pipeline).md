@@ -144,17 +144,105 @@ ChannelPipeline API 에는 인바운드와 아웃바운드 작업을 호출하�
 - ChannelPipeline 에는 인바운드와 아웃바운드 이벤트에 반응해 작업을 호출하는 풍부한 API 가 있다.
 
 ### ChannelHandlerContext 인터페이스
+ChannelHandlerContext 는 ChannelHandler 와 ChannelPipeline 간의 연결을 나타내며 ChannelHandler 를  ChannelPipeline 에 추가할 때마다 생성된다 <br>
+ChannelHandlerContext 의 주된 기능은 연결된 ChannelHandler 와 동일한 ChannelPipeline 내의 다른 ChannelHandler 간의 상호작용을 관리하는 것이다 <br>
 
+ChannelHandlerContext API 를 이용할 때는 다음 사항을 염두에 둬야 한다 <br>
+- ChannelHandler 와 연결된 ChannelHandlerContext 는 절대 변경되지 않으므로 참조를 저장해도 괜찮다.
+- ChannelHandlerContext 메소드는 다른 클래스에 있는 동일한 이름의 메소드에 비해 이벤트 흐름이 짧다. 이를 잘 활용하면 성능상 이득을 볼 수 있다.
 
+#### ChannelHandlerContext 이용
+ChannelPipeline 과 바인딩된 Channel, Channel 과 바인딩된 ChannelPipeline에 ChannelHandler 가 포함됨.<br>
+아래 예제는 ChannelHandlerContext 에서 Channel 에 대한 참조를 얻은 다음, 해당 Channel 에서 write() 를 호출해 이벤트가 파이프라인 전체를 통과하게 한다
+```java
+ChannelHandlerContext ctx = null;
+Channel channel = ctx.channel(); // ctx 와 연결된 Channel 에 대한 참조를 얻음
+channel.write(Unpooled.copiedBuffer("Netty in Action", CharsetUtil.UTF8)); // Channel 을 통해 버퍼를 기록
+```
 
+다음 예제는 Channel 이 아닌 ChannelPipeline 을 통해 기록한다
+```java
+ChannelHandlerContext ctx = null;
+ChannelPipeline pipeline = ctx.pipeline(); // ctx 와 연결된 ChannelPipeline 에 대한 참조를 얻음
+pipeline.write(Unpooled.copiedBuffer("Netty in Action", CharsetUtil.UTF8)); // pipeline 을 통해 버퍼를 기록
+```
 
+위 두 코드는 흐름은 동일하고, write() 메소드를 통해 파이프라인을 통해 끝까지 전파되는 점은 같지만 <br>
+한 핸들러에서 ChannelHandler 단계로 전파하는 일을 ChannelHandlerContext 가 한다는점이 다르다 <br>
 
+ChannelPipeline 의 특정 지점에서 이벤트 전파를 시작하는 이유가 뭘까? <br>
+- 관련이 없는 ChannelHandler 를 통과하면서 생기는 오버헤드를 줄일 수 있다.
+- 이벤트와 관련된 핸들러에서 이벤트가 처리되는 것을 방지할 수 있다.
 
+특정 ChannelHandler 에서 시작하는 처리를 호출하려면 한 단계전 ChannelHandler 와 연결된 ChannelHandlerContext 를 참조해야 한다 <br>
+```java
+ChannelHandlerContext ctx = null; // ctx 에 대한 참조를 얻음
+ctx.write(Unpooled.copiedBuffer("Netty in Action", CharsetUtil.UTF_8)); // write() 버퍼를 다음 ChannelHandler 로 전송
+```
 
+#### ChannelHandler 와 ChannelHandlerContext 의 고급 활용
+ChannelHandlerContext 의 pipeline() 메소드를 호출하면 바깥쪽 ChannelPipeline 에 대한 참조를 얻을 수 있다 <br>
+이 방법을 사용하여 런타임에 파이프라인의 ChannelHandler 를 조작해 정교한 설계를 구현할 수 있다 <br>
+ex) 파이프라인에 ChannelHandler 를 추가해 동적 프로토콜 변경을 지원할 수 있다.
+
+ChannelHandlerContext 의 참조를 캐싱하면 ChannelHandler 메소드 외부나, 다른 스레드에서 다른 고급 기법을 실행하는데 이용할 수 있다 
+```java
+public class WriteHandler extends ChannelHandlerAdapter {
+	// ctx 참조를 나중에 이용하기 위해 캐싱
+	private ChannelHandlerContext ctx;
+
+	@Override
+	public void handlerAdded (ChannelHandlerContext ctx) throws Exception {
+		this.ctx = ctx;
+	}
+
+	// 저장한 ctx 를 이용해 메시지를 전송
+	public void send(String msg) {
+		ctx.writeAndFlush(msg);
+	}
+
+}
+```
+
+ChannelHandler 는 둘 이상의 ChannelPipeline 에 속할 수 있으므로 여러 ChannelHandlerContext 인스턴스와 바인딩할 수 있다 <br>
+ChannelHandler 를 이런 용도로 이용하려면 @Sharable 어노테이션을 지정해야 한다 <br>
+
+여러 동시 채널(즉, 여러 연결) 에서 ChannelHandler 를 안전하게 이용하려면 ChannelHandler 가 스레드에 대해 안전해야 한다 <br>
+
+```java
+// INFO 공유 가능한 ChannelHandler
+@ChannelHandler.Sharable
+public class SharableHandler extends ChannelHandlerAdapter {
+	@Override
+	public void channelRead (ChannelHandlerContext ctx, Object msg) throws Exception {
+		super.channelRead(ctx, msg);
+		System.out.println("Channel read messagae: " + msg);
+		ctx.fireChannelRead(msg); // 메소드 호출을 로깅하고 다음 ChannelHandler 로 전달
+	}
+
+}
+```
+
+@Sharable 은 스레드에 대해 확실히 안전한 경우에만 이용한다 <br>
+ChannelHandler 를 공유하는 이유는, 여러 Channel 에서 통계 정보를 얻기 위해서 이다 <br>
+
+### 예외 처리
+#### 인바운드 예외 처리
+인바운드 이벤트를 처리하는 동안 예외가 발생하면 트리거된 ChannelInboundHandler ~ ChannelPipeline 을 통과한다 <br>
+이러한 인바운드 예외를 처리하려면
+```java
+@Override
+public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
+	cause.printStackTrace();
+	ctx.close();
+}
+```
+
+위 메소드를 재정의해야 한다. 
+#### 아웃바운드 예외 처리
 
 ### 용어 정리
 - 인바운드: 트래픽이 네트워크에 들어오는 정보 ex) 첨부파일을 서버에 저장할 때
 - 아웃바운드: 트래픽이 네트워크에서 나가는 정보 ex) 첨부파일을 다운로드 할 때
-- 
-
-### 요약 정리
+- 이벤트: 어떤 일이 일어났음을 알리는 신호나 메시지를 의미합니다. 좀 더 정확하게 말하자면, 특정 시점에 발생하는 변화나 상태 변경을 나타내는 정보
+- 파이프라인: 한 데이터 처리 단계의 출력이 다음 단계의 입력으로 이어지는 형태로 연결된 구조를 가리킨다. 이렇게 연결된 데이터 처리 단계는 한 여러 단계가 서로 동시에, 또는 병렬적으로 수행될 수 있어 효율성의 향상 시킬수 있다
