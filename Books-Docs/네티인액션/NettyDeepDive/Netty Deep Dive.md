@@ -5,7 +5,7 @@
 Netty 는 가장 인기있는 비동기 이벤트 기반 프레임워크이다 <br> 
 
 ## I/O 모델
-애플리케이션 프로세스에서 원격에 있는 디바이스와 데이터를 전송(write) 및 수신(read) 하기 위해선 OS 커널 System call 이 불가피하다<br.
+애플리케이션 프로세스에서 원격에 있는 디바이스와 데이터를 전송(write) 및 수신(read) 하기 위해선 OS 커널 System call 이 불가피하다<br>
 ![img.png](img.png)<br>
 - write System call : os 커널은 전송하고자 하는 데이터를 소켓 **전송** 버퍼에 복사한다.
 - read System call : os 커널은 수신 받은 데이터를 소켓 **수신** 버퍼에 복사한다.

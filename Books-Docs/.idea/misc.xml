@@ -4,7 +4,7 @@
   <component name="FrameworkDetectionExcludesConfiguration">
     <file type="web" url="file://$PROJECT_DIR$/benchmark" />
     <file type="web" url="file://$PROJECT_DIR$/Java" />
-    <file type="web" url="file://$PROJECT_DIR$/SpringBoot-Aws-Implements-WebService" />
+    <file type="web" url="file://$PROJECT_DIR$/SpringBoot-aws" />
   </component>
   <component name="ProjectRootManager" version="2" project-jdk-name="corretto-17" project-jdk-type="JavaSDK">
     <output url="file://$PROJECT_DIR$/out" />
