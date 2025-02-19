@@ -12,7 +12,12 @@ public class DddStartApplication {
 
 	@PostConstruct
 	public void init() {
-		log.info("도메인 주도 개발 시작하기!");
+		log.info("도메인 주도 개발 시작해보자고~~");
+		try {
+			Thread.sleep(2000);
+		} catch (Exception e) {
+			throw new RuntimeException(e);
+		}
 	}
 
 	public static void main (String[] args) {
